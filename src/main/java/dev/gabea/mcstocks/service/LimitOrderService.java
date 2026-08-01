@@ -180,9 +180,15 @@ public final class LimitOrderService {
                         "symbol", order.symbol(),
                         "quantity", dev.gabea.mcstocks.util.Formats.quantity(order.quantity())
                 )));
-            } else if ("insufficient-funds".equals(result.messageKey()) || "insufficient-holdings".equals(result.messageKey())) {
+            } else if (terminalFailure(result.messageKey())) {
                 mark(order.id(), "FAILED", Instant.now().toEpochMilli());
                 player.sendMessage(messages.format("limit-failed", Map.of(
+                        "id", String.valueOf(order.id()),
+                        "reason", result.messageKey()
+                )));
+            } else {
+                mark(order.id(), "OPEN", null);
+                player.sendMessage(messages.format("limit-deferred", Map.of(
                         "id", String.valueOf(order.id()),
                         "reason", result.messageKey()
                 )));
@@ -206,7 +212,7 @@ public final class LimitOrderService {
 
     private int openOrderCount(UUID playerId) throws SQLException {
         try (PreparedStatement statement = database.connection().prepareStatement(
-                "SELECT COUNT(*) FROM limit_orders WHERE uuid = ? AND status = 'OPEN'")) {
+                "SELECT COUNT(*) FROM limit_orders WHERE uuid = ? AND status IN ('OPEN', 'PROCESSING')")) {
             statement.setString(1, playerId.toString());
             try (ResultSet results = statement.executeQuery()) {
                 return results.next() ? results.getInt(1) : 0;
@@ -276,6 +282,14 @@ public final class LimitOrderService {
             statement.setLong(1, Instant.now().toEpochMilli() - staleProcessingMillis);
             statement.executeUpdate();
         }
+    }
+
+    private boolean terminalFailure(String messageKey) {
+        return switch (messageKey) {
+            case "insufficient-funds", "insufficient-holdings", "trade-too-small", "trade-too-large",
+                 "whole-units-only", "asset-disabled", "asset-not-found", "limit-reserved-holdings" -> true;
+            default -> false;
+        };
     }
 
     private LimitOrder readOrder(ResultSet results) throws SQLException {
