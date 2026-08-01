@@ -9,7 +9,7 @@ softdepend:
   - Essentials
 commands:
   stocks:
-    description: Open the stock market menu or trade assets.
+    description: Open the stock market menu, trade assets, or manage limit orders.
     usage: /stocks
     permission: mcstocks.use
   stocksadmin:

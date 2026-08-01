@@ -23,6 +23,9 @@ The server-ready jar is produced in `build/libs/MC-Stocks-1.0.0.jar`.
 - `/stocks` opens the stock menu.
 - `/stocks buy <symbol> <amount>`
 - `/stocks sell <symbol> <amount>`
+- `/stocks limit <buy|sell> <symbol> <amount> <targetPrice>`
+- `/stocks orders`
+- `/stocks cancel <orderId>`
 - `/stocks portfolio`
 - `/stocks price <symbol>`
 - `/stocks movers`
@@ -36,3 +39,8 @@ The server-ready jar is produced in `build/libs/MC-Stocks-1.0.0.jar`.
 - `/stocksadmin setprice <symbol> <price>`
 - `/stocksadmin event <symbol|all> <bull|bear|crash|pump>`
 - `/stocksadmin inspect <player>`
+
+## GitHub Releases
+
+The included GitHub Actions workflow builds the plugin on every push and pull request.
+Push a version tag such as `v1.0.0` to publish a GitHub Release with the jar attached.

@@ -5,11 +5,15 @@ import dev.gabea.mcstocks.config.MessageService;
 import dev.gabea.mcstocks.gui.StockMenus;
 import dev.gabea.mcstocks.model.Holding;
 import dev.gabea.mcstocks.model.LeaderboardEntry;
+import dev.gabea.mcstocks.model.LimitOrder;
 import dev.gabea.mcstocks.model.MarketState;
+import dev.gabea.mcstocks.model.OrderSide;
 import dev.gabea.mcstocks.model.PlayerGainEntry;
 import dev.gabea.mcstocks.model.TradeResult;
+import dev.gabea.mcstocks.service.LimitOrderService;
 import dev.gabea.mcstocks.service.MarketService;
 import dev.gabea.mcstocks.service.PortfolioService;
+import dev.gabea.mcstocks.service.PriceHistoryService;
 import dev.gabea.mcstocks.util.Formats;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
@@ -31,13 +35,17 @@ public final class StocksCommand implements CommandExecutor, TabCompleter {
     private final MessageService messages;
     private final MarketService marketService;
     private final PortfolioService portfolioService;
+    private final PriceHistoryService priceHistoryService;
+    private final LimitOrderService limitOrderService;
     private final StockMenus stockMenus;
 
-    public StocksCommand(MCStocksPlugin plugin, MessageService messages, MarketService marketService, PortfolioService portfolioService, StockMenus stockMenus) {
+    public StocksCommand(MCStocksPlugin plugin, MessageService messages, MarketService marketService, PortfolioService portfolioService, PriceHistoryService priceHistoryService, LimitOrderService limitOrderService, StockMenus stockMenus) {
         this.plugin = plugin;
         this.messages = messages;
         this.marketService = marketService;
         this.portfolioService = portfolioService;
+        this.priceHistoryService = priceHistoryService;
+        this.limitOrderService = limitOrderService;
         this.stockMenus = stockMenus;
     }
 
@@ -61,6 +69,9 @@ public final class StocksCommand implements CommandExecutor, TabCompleter {
                 case "price" -> showPrice(player, args);
                 case "top" -> showTop(player, args);
                 case "movers" -> showMovers(player);
+                case "limit" -> createLimitOrder(player, args);
+                case "orders" -> showOrders(player);
+                case "cancel" -> cancelOrder(player, args);
                 default -> stockMenus.openMain(player);
             }
         } catch (SQLException ex) {
@@ -73,10 +84,16 @@ public final class StocksCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return filter(List.of("buy", "sell", "portfolio", "price", "top", "movers"), args[0]);
+            return filter(List.of("buy", "sell", "limit", "orders", "cancel", "portfolio", "price", "top", "movers"), args[0]);
+        }
+        if (args.length == 2 && "limit".equalsIgnoreCase(args[0])) {
+            return filter(List.of("buy", "sell"), args[1]);
         }
         if (args.length == 2 && List.of("buy", "sell", "price").contains(args[0].toLowerCase(Locale.ROOT))) {
             return filter(marketService.allStates().stream().map(state -> state.asset().symbol()).toList(), args[1]);
+        }
+        if (args.length == 3 && "limit".equalsIgnoreCase(args[0]) && List.of("buy", "sell").contains(args[1].toLowerCase(Locale.ROOT))) {
+            return filter(marketService.allStates().stream().map(state -> state.asset().symbol()).toList(), args[2]);
         }
         if (args.length == 2 && "top".equalsIgnoreCase(args[0])) {
             return filter(List.of("portfolio", "gain", "profit"), args[1]);
@@ -133,6 +150,11 @@ public final class StocksCommand implements CommandExecutor, TabCompleter {
         }
         player.sendMessage(state.asset().symbol() + " " + state.asset().name() + ": "
                 + Formats.money(state.price()) + " (" + Formats.percent(state.changePercent()) + ")");
+        try {
+            player.sendMessage("History: " + priceHistoryService.sparkline(state.asset().symbol(), 16));
+        } catch (SQLException ex) {
+            plugin.getLogger().warning("Could not load price history: " + ex.getMessage());
+        }
     }
 
     private void showTop(Player player, String[] args) throws SQLException {
@@ -170,6 +192,69 @@ public final class StocksCommand implements CommandExecutor, TabCompleter {
                         + " (" + Formats.percent(state.changePercent()) + ")"));
     }
 
+    private void createLimitOrder(Player player, String[] args) throws SQLException {
+        if (args.length < 5) {
+            player.sendMessage("/stocks limit <buy|sell> <symbol> <amount> <targetPrice>");
+            return;
+        }
+        OrderSide side;
+        try {
+            side = OrderSide.valueOf(args[1].toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            player.sendMessage("/stocks limit <buy|sell> <symbol> <amount> <targetPrice>");
+            return;
+        }
+
+        double quantity;
+        double targetPrice;
+        try {
+            quantity = Double.parseDouble(args[3]);
+            targetPrice = Double.parseDouble(args[4]);
+        } catch (NumberFormatException ex) {
+            player.sendMessage(messages.get("invalid-amount"));
+            return;
+        }
+
+        try {
+            long id = limitOrderService.create(player, side, args[2], quantity, targetPrice);
+            player.sendMessage(messages.format("limit-created", Map.of("id", String.valueOf(id))));
+        } catch (IllegalStateException | IllegalArgumentException ex) {
+            player.sendMessage(limitError(ex.getMessage(), args[2], quantity, targetPrice));
+        }
+    }
+
+    private void showOrders(Player player) throws SQLException {
+        List<LimitOrder> orders = limitOrderService.openOrders(player.getUniqueId());
+        if (orders.isEmpty()) {
+            player.sendMessage("You have no open limit orders.");
+            return;
+        }
+        player.sendMessage("Open limit orders:");
+        for (LimitOrder order : orders) {
+            player.sendMessage("#" + order.id() + " " + order.side() + " " + order.symbol()
+                    + " " + Formats.quantity(order.quantity()) + " @ " + Formats.money(order.targetPrice()));
+        }
+    }
+
+    private void cancelOrder(Player player, String[] args) throws SQLException {
+        if (args.length < 2) {
+            player.sendMessage("/stocks cancel <orderId>");
+            return;
+        }
+        long id;
+        try {
+            id = Long.parseLong(args[1]);
+        } catch (NumberFormatException ex) {
+            player.sendMessage("/stocks cancel <orderId>");
+            return;
+        }
+        if (limitOrderService.cancel(player.getUniqueId(), id)) {
+            player.sendMessage(messages.format("limit-cancelled", Map.of("id", String.valueOf(id))));
+        } else {
+            player.sendMessage(messages.format("limit-not-found", Map.of("id", String.valueOf(id))));
+        }
+    }
+
     public void sendTradeResult(Player player, TradeResult result) {
         Map<String, String> replacements = Map.of(
                 "symbol", result.symbol(),
@@ -193,5 +278,19 @@ public final class StocksCommand implements CommandExecutor, TabCompleter {
 
     private String playerName(OfflinePlayer player) {
         return player.getName() == null ? player.getUniqueId().toString().substring(0, 8) : player.getName();
+    }
+
+    private String limitError(String key, String symbol, double quantity, double targetPrice) {
+        double estimatedGross = quantity * targetPrice;
+        double amount = switch (key == null ? "" : key) {
+            case "trade-too-small" -> marketService.rules().minTradeValue();
+            case "trade-too-large" -> marketService.rules().maxTradeValue();
+            case "insufficient-funds" -> estimatedGross + (estimatedGross * (marketService.feePercent() / 100.0));
+            default -> estimatedGross;
+        };
+        return messages.format(key == null ? "invalid-amount" : key, Map.of(
+                "symbol", symbol.toUpperCase(Locale.ROOT),
+                "amount", Formats.money(amount)
+        ));
     }
 }

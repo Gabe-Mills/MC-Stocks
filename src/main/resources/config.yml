@@ -6,6 +6,11 @@ market:
   max-price-change-percent-per-tick: 12.0
   min-trade-value: 1.0
   max-trade-value: 100000.0
+  price-history-limit-per-asset: 500
+
+limit-orders:
+  enabled: true
+  execute-offline-players: false
 
 leaderboards:
   size: 10

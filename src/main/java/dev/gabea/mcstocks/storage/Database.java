@@ -55,8 +55,32 @@ public final class Database implements AutoCloseable {
                         realized_profit REAL NOT NULL DEFAULT 0
                     )
                     """);
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS price_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        symbol TEXT NOT NULL,
+                        price REAL NOT NULL,
+                        recorded_at INTEGER NOT NULL
+                    )
+                    """);
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS limit_orders (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        uuid TEXT NOT NULL,
+                        symbol TEXT NOT NULL,
+                        side TEXT NOT NULL,
+                        quantity REAL NOT NULL,
+                        target_price REAL NOT NULL,
+                        status TEXT NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        executed_at INTEGER
+                    )
+                    """);
             statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_trade_history_uuid_created ON trade_history (uuid, created_at)");
             statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_trade_history_symbol_created ON trade_history (symbol, created_at)");
+            statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_price_history_symbol_recorded ON price_history (symbol, recorded_at)");
+            statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_limit_orders_status_symbol ON limit_orders (status, symbol)");
+            statement.executeUpdate("CREATE INDEX IF NOT EXISTS idx_limit_orders_uuid_status ON limit_orders (uuid, status)");
         }
     }
 

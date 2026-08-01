@@ -9,6 +9,7 @@ import dev.gabea.mcstocks.model.PlayerGainEntry;
 import dev.gabea.mcstocks.model.TradeResult;
 import dev.gabea.mcstocks.service.MarketService;
 import dev.gabea.mcstocks.service.PortfolioService;
+import dev.gabea.mcstocks.service.PriceHistoryService;
 import dev.gabea.mcstocks.util.Formats;
 import dev.gabea.mcstocks.util.Text;
 import net.kyori.adventure.text.Component;
@@ -31,12 +32,14 @@ public final class StockMenus {
     private final MessageService messages;
     private final MarketService marketService;
     private final PortfolioService portfolioService;
+    private final PriceHistoryService priceHistoryService;
 
-    public StockMenus(MCStocksPlugin plugin, MessageService messages, MarketService marketService, PortfolioService portfolioService) {
+    public StockMenus(MCStocksPlugin plugin, MessageService messages, MarketService marketService, PortfolioService portfolioService, PriceHistoryService priceHistoryService) {
         this.plugin = plugin;
         this.messages = messages;
         this.marketService = marketService;
         this.portfolioService = portfolioService;
+        this.priceHistoryService = priceHistoryService;
     }
 
     public void openMain(Player player) {
@@ -50,8 +53,10 @@ public final class StockMenus {
         inventory.setItem(12, item(Material.SPYGLASS, "&eMovers", List.of("&7See the strongest and weakest assets.", "&eClick to open.")));
         holder.action(12, this::openMovers);
 
-        inventory.setItem(14, item(Material.CHEST, "&bPortfolio", List.of("&7View your holdings and value.", "&eClick to open.")));
-        holder.action(14, this::openPortfolio);
+        inventory.setItem(13, item(Material.CHEST, "&bPortfolio", List.of("&7View your holdings and value.", "&eClick to open.")));
+        holder.action(13, this::openPortfolio);
+
+        inventory.setItem(15, item(Material.WRITABLE_BOOK, "&dLimit Orders", List.of("&7Use &f/stocks orders&7 to list orders.", "&7Use &f/stocks limit buy IRON 1 100&7.")));
 
         inventory.setItem(16, item(Material.GOLD_INGOT, "&6Leaderboards", List.of("&7Top portfolio value, daily gains, and profit.", "&eClick to open.")));
         holder.action(16, this::openLeaderboards);
@@ -127,7 +132,8 @@ public final class StockMenus {
                 "&7Fee: &f" + Formats.rate(marketService.feePercent()),
                 "&7Min value: &f" + Formats.money(marketService.rules().minTradeValue()),
                 "&7Max value: &f" + Formats.money(marketService.rules().maxTradeValue()),
-                state.asset().decimalTrading() ? "&7Units: &fDecimal" : "&7Units: &fWhole only"
+                state.asset().decimalTrading() ? "&7Units: &fDecimal" : "&7Units: &fWhole only",
+                "&7Limit: &f/stocks limit buy " + state.asset().symbol() + " 1 " + Formats.quantity(state.price())
         )));
 
         List<Double> amounts = quickAmounts(state);
@@ -233,10 +239,17 @@ public final class StockMenus {
 
     private ItemStack marketItem(MarketState state) {
         String changeColor = state.changePercent() >= 0.0 ? "&a" : "&c";
+        String history = "no history yet";
+        try {
+            history = priceHistoryService.sparkline(state.asset().symbol(), 16);
+        } catch (SQLException ex) {
+            plugin.getLogger().warning("Could not load price history for " + state.asset().symbol() + ": " + ex.getMessage());
+        }
         return item(state.asset().displayMaterial(), "&a" + state.asset().symbol() + " &7- &f" + state.asset().name(), List.of(
                 "&7Type: &f" + state.asset().type(),
                 "&7Price: &f" + Formats.money(state.price()),
                 "&7Day: " + changeColor + Formats.percent(state.changePercent()),
+                "&7History: &f" + history,
                 "&7Status: " + (state.asset().enabled() ? "&aTradable" : "&cDisabled"),
                 "&eClick to trade."
         ));
