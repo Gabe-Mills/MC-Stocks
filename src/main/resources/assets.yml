@@ -1,0 +1,71 @@
+assets:
+  IRON:
+    name: "IronWorks Co."
+    type: STOCK
+    initial-price: 125.00
+    min-price: 5.00
+    volatility: 0.025
+    trend: 0.001
+    decimal-trading: false
+    display-material: IRON_INGOT
+    enabled: true
+  RED:
+    name: "Redstone Systems"
+    type: STOCK
+    initial-price: 82.50
+    min-price: 3.00
+    volatility: 0.035
+    trend: 0.0015
+    decimal-trading: false
+    display-material: REDSTONE
+    enabled: true
+  EMR:
+    name: "Emerald Retail"
+    type: STOCK
+    initial-price: 210.00
+    min-price: 10.00
+    volatility: 0.02
+    trend: 0.0005
+    decimal-trading: false
+    display-material: EMERALD
+    enabled: true
+  NETH:
+    name: "Nether Logistics"
+    type: STOCK
+    initial-price: 64.00
+    min-price: 2.00
+    volatility: 0.045
+    trend: -0.0005
+    decimal-trading: false
+    display-material: NETHER_BRICK
+    enabled: true
+  CREEP:
+    name: "CreeperCoin"
+    type: CRYPTO
+    initial-price: 18.00
+    min-price: 0.25
+    volatility: 0.08
+    trend: 0.002
+    decimal-trading: true
+    display-material: GUNPOWDER
+    enabled: true
+  ENDER:
+    name: "EnderCoin"
+    type: CRYPTO
+    initial-price: 42.00
+    min-price: 0.50
+    volatility: 0.065
+    trend: 0.001
+    decimal-trading: true
+    display-material: ENDER_PEARL
+    enabled: true
+  LAPIS:
+    name: "LapisPay"
+    type: CRYPTO
+    initial-price: 7.50
+    min-price: 0.10
+    volatility: 0.09
+    trend: -0.001
+    decimal-trading: true
+    display-material: LAPIS_LAZULI
+    enabled: true

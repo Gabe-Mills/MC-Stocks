@@ -1,0 +1,40 @@
+name: MC-Stocks
+version: ${version}
+main: dev.gabea.mcstocks.MCStocksPlugin
+api-version: "1.21"
+author: Gabe
+depend:
+  - Vault
+softdepend:
+  - Essentials
+commands:
+  stocks:
+    description: Open the stock market menu or trade assets.
+    usage: /stocks
+    permission: mcstocks.use
+  stocksadmin:
+    description: Admin controls for MC-Stocks.
+    usage: /stocksadmin
+    permission: mcstocks.admin
+permissions:
+  mcstocks.use:
+    description: Allows player stock trading.
+    default: true
+  mcstocks.admin:
+    description: Allows MC-Stocks admin commands.
+    default: op
+  mcstocks.admin.reload:
+    description: Allows reloading MC-Stocks configuration.
+    default: op
+  mcstocks.admin.pause:
+    description: Allows pausing and resuming the market.
+    default: op
+  mcstocks.admin.setprice:
+    description: Allows setting asset prices.
+    default: op
+  mcstocks.admin.event:
+    description: Allows triggering market events.
+    default: op
+  mcstocks.admin.inspect:
+    description: Allows inspecting player portfolios.
+    default: op
