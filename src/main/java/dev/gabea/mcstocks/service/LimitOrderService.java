@@ -28,8 +28,9 @@ public final class LimitOrderService {
     private final dev.gabea.mcstocks.config.MessageService messages;
     private boolean enabled;
     private int maxOpenPerPlayer;
+    private long staleProcessingMillis;
 
-    public LimitOrderService(Database database, MarketService marketService, PortfolioService portfolioService, EconomyService economyService, dev.gabea.mcstocks.config.MessageService messages, boolean enabled, int maxOpenPerPlayer) {
+    public LimitOrderService(Database database, MarketService marketService, PortfolioService portfolioService, EconomyService economyService, dev.gabea.mcstocks.config.MessageService messages, boolean enabled, int maxOpenPerPlayer, int staleProcessingSeconds) {
         this.database = database;
         this.marketService = marketService;
         this.portfolioService = portfolioService;
@@ -37,11 +38,13 @@ public final class LimitOrderService {
         this.messages = messages;
         this.enabled = enabled;
         this.maxOpenPerPlayer = Math.max(1, maxOpenPerPlayer);
+        this.staleProcessingMillis = Math.max(30, staleProcessingSeconds) * 1000L;
     }
 
-    public void reload(boolean enabled, int maxOpenPerPlayer) {
+    public void reload(boolean enabled, int maxOpenPerPlayer, int staleProcessingSeconds) {
         this.enabled = enabled;
         this.maxOpenPerPlayer = Math.max(1, maxOpenPerPlayer);
+        this.staleProcessingMillis = Math.max(30, staleProcessingSeconds) * 1000L;
     }
 
     public long create(Player player, OrderSide side, String rawSymbol, double quantity, double targetPrice) throws SQLException {
@@ -73,8 +76,15 @@ public final class LimitOrderService {
         if (side == OrderSide.BUY && (!economyService.available() || !economyService.has(player, estimatedGross + fee(estimatedGross)))) {
             throw new IllegalArgumentException("insufficient-funds");
         }
-        if (side == OrderSide.SELL && portfolioService.holding(player.getUniqueId(), symbol).quantity() + 0.000001 < quantity) {
-            throw new IllegalArgumentException("insufficient-holdings");
+        if (side == OrderSide.SELL) {
+            double owned = portfolioService.holding(player.getUniqueId(), symbol).quantity();
+            double reserved = openSellQuantity(player.getUniqueId(), symbol);
+            if (owned + 0.000001 < quantity) {
+                throw new IllegalArgumentException("insufficient-holdings");
+            }
+            if ((owned - reserved) + 0.000001 < quantity) {
+                throw new IllegalArgumentException("limit-reserved-holdings");
+            }
         }
 
         try (PreparedStatement statement = database.connection().prepareStatement("""
@@ -149,16 +159,21 @@ public final class LimitOrderService {
         if (!enabled || !marketService.isOpen()) {
             return;
         }
+        recoverStaleProcessingOrders();
         for (LimitOrder order : executableOrders()) {
+            if (!claim(order.id())) {
+                continue;
+            }
             Player player = Bukkit.getPlayer(order.playerId());
             if (player == null || !player.isOnline()) {
+                mark(order.id(), "OPEN", null);
                 continue;
             }
             TradeResult result = order.side() == OrderSide.BUY
                     ? portfolioService.buy(player, order.symbol(), order.quantity())
                     : portfolioService.sell(player, order.symbol(), order.quantity());
             if (result.success()) {
-                mark(order.id(), "FILLED");
+                mark(order.id(), "FILLED", Instant.now().toEpochMilli());
                 player.sendMessage(messages.format("limit-filled", Map.of(
                         "id", String.valueOf(order.id()),
                         "side", order.side().name(),
@@ -166,11 +181,25 @@ public final class LimitOrderService {
                         "quantity", dev.gabea.mcstocks.util.Formats.quantity(order.quantity())
                 )));
             } else if ("insufficient-funds".equals(result.messageKey()) || "insufficient-holdings".equals(result.messageKey())) {
-                mark(order.id(), "FAILED");
+                mark(order.id(), "FAILED", Instant.now().toEpochMilli());
                 player.sendMessage(messages.format("limit-failed", Map.of(
                         "id", String.valueOf(order.id()),
                         "reason", result.messageKey()
                 )));
+            }
+        }
+    }
+
+    public double openSellQuantity(UUID playerId, String rawSymbol) throws SQLException {
+        try (PreparedStatement statement = database.connection().prepareStatement("""
+                SELECT COALESCE(SUM(quantity), 0)
+                FROM limit_orders
+                WHERE uuid = ? AND symbol = ? AND side = 'SELL' AND status IN ('OPEN', 'PROCESSING')
+                """)) {
+            statement.setString(1, playerId.toString());
+            statement.setString(2, normalize(rawSymbol));
+            try (ResultSet results = statement.executeQuery()) {
+                return results.next() ? results.getDouble(1) : 0.0;
             }
         }
     }
@@ -212,11 +241,39 @@ public final class LimitOrderService {
     }
 
     private void mark(long id, String status) throws SQLException {
+        mark(id, status, Instant.now().toEpochMilli());
+    }
+
+    private void mark(long id, String status, Long executedAt) throws SQLException {
         try (PreparedStatement statement = database.connection().prepareStatement(
                 "UPDATE limit_orders SET status = ?, executed_at = ? WHERE id = ?")) {
             statement.setString(1, status);
-            statement.setLong(2, Instant.now().toEpochMilli());
+            if (executedAt == null) {
+                statement.setNull(2, java.sql.Types.INTEGER);
+            } else {
+                statement.setLong(2, executedAt);
+            }
             statement.setLong(3, id);
+            statement.executeUpdate();
+        }
+    }
+
+    private boolean claim(long id) throws SQLException {
+        try (PreparedStatement statement = database.connection().prepareStatement(
+                "UPDATE limit_orders SET status = 'PROCESSING', executed_at = ? WHERE id = ? AND status = 'OPEN'")) {
+            statement.setLong(1, Instant.now().toEpochMilli());
+            statement.setLong(2, id);
+            return statement.executeUpdate() > 0;
+        }
+    }
+
+    private void recoverStaleProcessingOrders() throws SQLException {
+        try (PreparedStatement statement = database.connection().prepareStatement("""
+                UPDATE limit_orders
+                SET status = 'OPEN', executed_at = NULL
+                WHERE status = 'PROCESSING' AND executed_at < ?
+                """)) {
+            statement.setLong(1, Instant.now().toEpochMilli() - staleProcessingMillis);
             statement.executeUpdate();
         }
     }

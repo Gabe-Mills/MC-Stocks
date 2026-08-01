@@ -10,8 +10,8 @@ market:
 
 limit-orders:
   enabled: true
-  execute-offline-players: false
   max-open-per-player: 10
+  stale-processing-seconds: 300
 
 leaderboards:
   size: 10

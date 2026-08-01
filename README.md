@@ -9,7 +9,7 @@ It uses Vault for economy transactions, so it works with EssentialsX Economy thr
 .\gradlew.bat build
 ```
 
-The server-ready jar is produced in `build/libs/MC-Stocks-1.0.0.jar`.
+The server-ready jar is produced in `build/libs/MC-Stocks-<version>.jar`.
 
 ## Runtime Requirements
 
