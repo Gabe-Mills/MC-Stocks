@@ -54,7 +54,7 @@ public final class MCStocksPlugin extends JavaPlugin {
         marketService = new MarketService(assetRegistry, getConfig());
         priceHistoryService = new PriceHistoryService(database, getConfig().getInt("market.price-history-limit-per-asset", 500));
         portfolioService = new PortfolioService(database, marketService, economyService);
-        limitOrderService = new LimitOrderService(database, marketService, portfolioService, economyService, getLogger(), getConfig().getBoolean("limit-orders.enabled", true));
+        limitOrderService = new LimitOrderService(database, marketService, portfolioService, economyService, messages, getConfig().getBoolean("limit-orders.enabled", true), getConfig().getInt("limit-orders.max-open-per-player", 10));
         stockMenus = new StockMenus(this, messages, marketService, portfolioService, priceHistoryService);
         getServer().getPluginManager().registerEvents(new StocksMenuListener(stockMenus), this);
 
@@ -84,7 +84,7 @@ public final class MCStocksPlugin extends JavaPlugin {
         assetRegistry.reload();
         marketService.reload(getConfig());
         priceHistoryService.reload(getConfig().getInt("market.price-history-limit-per-asset", 500));
-        limitOrderService.reload(getConfig().getBoolean("limit-orders.enabled", true));
+        limitOrderService.reload(getConfig().getBoolean("limit-orders.enabled", true), getConfig().getInt("limit-orders.max-open-per-player", 10));
         scheduleMarketTask();
     }
 

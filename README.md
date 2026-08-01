@@ -26,6 +26,8 @@ The server-ready jar is produced in `build/libs/MC-Stocks-1.0.0.jar`.
 - `/stocks limit <buy|sell> <symbol> <amount> <targetPrice>`
 - `/stocks orders`
 - `/stocks cancel <orderId>`
+- `/stocks orderbook <symbol>`
+- `/stocks history <symbol>`
 - `/stocks portfolio`
 - `/stocks price <symbol>`
 - `/stocks movers`

@@ -18,32 +18,38 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
-import java.util.logging.Logger;
+import java.util.Map;
 
 public final class LimitOrderService {
     private final Database database;
     private final MarketService marketService;
     private final PortfolioService portfolioService;
     private final EconomyService economyService;
-    private final Logger logger;
+    private final dev.gabea.mcstocks.config.MessageService messages;
     private boolean enabled;
+    private int maxOpenPerPlayer;
 
-    public LimitOrderService(Database database, MarketService marketService, PortfolioService portfolioService, EconomyService economyService, Logger logger, boolean enabled) {
+    public LimitOrderService(Database database, MarketService marketService, PortfolioService portfolioService, EconomyService economyService, dev.gabea.mcstocks.config.MessageService messages, boolean enabled, int maxOpenPerPlayer) {
         this.database = database;
         this.marketService = marketService;
         this.portfolioService = portfolioService;
         this.economyService = economyService;
-        this.logger = logger;
+        this.messages = messages;
         this.enabled = enabled;
+        this.maxOpenPerPlayer = Math.max(1, maxOpenPerPlayer);
     }
 
-    public void reload(boolean enabled) {
+    public void reload(boolean enabled, int maxOpenPerPlayer) {
         this.enabled = enabled;
+        this.maxOpenPerPlayer = Math.max(1, maxOpenPerPlayer);
     }
 
     public long create(Player player, OrderSide side, String rawSymbol, double quantity, double targetPrice) throws SQLException {
         if (!enabled) {
             throw new IllegalStateException("limit-disabled");
+        }
+        if (openOrderCount(player.getUniqueId()) >= maxOpenPerPlayer) {
+            throw new IllegalArgumentException("limit-cap-reached");
         }
         String symbol = normalize(rawSymbol);
         MarketState state = marketService.state(symbol).orElseThrow(() -> new IllegalArgumentException("asset-not-found"));
@@ -119,6 +125,26 @@ public final class LimitOrderService {
         }
     }
 
+    public List<LimitOrder> openOrdersForSymbol(String rawSymbol, int limit) throws SQLException {
+        try (PreparedStatement statement = database.connection().prepareStatement("""
+                SELECT id, uuid, symbol, side, quantity, target_price, status, created_at, executed_at
+                FROM limit_orders
+                WHERE symbol = ? AND status = 'OPEN'
+                ORDER BY target_price ASC, created_at ASC
+                LIMIT ?
+                """)) {
+            statement.setString(1, normalize(rawSymbol));
+            statement.setInt(2, Math.max(1, limit));
+            try (ResultSet results = statement.executeQuery()) {
+                List<LimitOrder> orders = new ArrayList<>();
+                while (results.next()) {
+                    orders.add(readOrder(results));
+                }
+                return orders;
+            }
+        }
+    }
+
     public void processOpenOrders() throws SQLException {
         if (!enabled || !marketService.isOpen()) {
             return;
@@ -133,10 +159,28 @@ public final class LimitOrderService {
                     : portfolioService.sell(player, order.symbol(), order.quantity());
             if (result.success()) {
                 mark(order.id(), "FILLED");
-                player.sendMessage("Limit order #" + order.id() + " filled: " + order.side() + " " + order.symbol() + " " + order.quantity());
+                player.sendMessage(messages.format("limit-filled", Map.of(
+                        "id", String.valueOf(order.id()),
+                        "side", order.side().name(),
+                        "symbol", order.symbol(),
+                        "quantity", dev.gabea.mcstocks.util.Formats.quantity(order.quantity())
+                )));
             } else if ("insufficient-funds".equals(result.messageKey()) || "insufficient-holdings".equals(result.messageKey())) {
                 mark(order.id(), "FAILED");
-                player.sendMessage("Limit order #" + order.id() + " failed: " + result.messageKey());
+                player.sendMessage(messages.format("limit-failed", Map.of(
+                        "id", String.valueOf(order.id()),
+                        "reason", result.messageKey()
+                )));
+            }
+        }
+    }
+
+    private int openOrderCount(UUID playerId) throws SQLException {
+        try (PreparedStatement statement = database.connection().prepareStatement(
+                "SELECT COUNT(*) FROM limit_orders WHERE uuid = ? AND status = 'OPEN'")) {
+            statement.setString(1, playerId.toString());
+            try (ResultSet results = statement.executeQuery()) {
+                return results.next() ? results.getInt(1) : 0;
             }
         }
     }

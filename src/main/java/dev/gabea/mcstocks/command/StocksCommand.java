@@ -72,6 +72,8 @@ public final class StocksCommand implements CommandExecutor, TabCompleter {
                 case "limit" -> createLimitOrder(player, args);
                 case "orders" -> showOrders(player);
                 case "cancel" -> cancelOrder(player, args);
+                case "orderbook" -> showOrderBook(player, args);
+                case "history" -> showHistory(player, args);
                 default -> stockMenus.openMain(player);
             }
         } catch (SQLException ex) {
@@ -84,12 +86,15 @@ public final class StocksCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return filter(List.of("buy", "sell", "limit", "orders", "cancel", "portfolio", "price", "top", "movers"), args[0]);
+            return filter(List.of("buy", "sell", "limit", "orders", "cancel", "orderbook", "history", "portfolio", "price", "top", "movers"), args[0]);
         }
         if (args.length == 2 && "limit".equalsIgnoreCase(args[0])) {
             return filter(List.of("buy", "sell"), args[1]);
         }
         if (args.length == 2 && List.of("buy", "sell", "price").contains(args[0].toLowerCase(Locale.ROOT))) {
+            return filter(marketService.allStates().stream().map(state -> state.asset().symbol()).toList(), args[1]);
+        }
+        if (args.length == 2 && List.of("orderbook", "history").contains(args[0].toLowerCase(Locale.ROOT))) {
             return filter(marketService.allStates().stream().map(state -> state.asset().symbol()).toList(), args[1]);
         }
         if (args.length == 3 && "limit".equalsIgnoreCase(args[0]) && List.of("buy", "sell").contains(args[1].toLowerCase(Locale.ROOT))) {
@@ -252,6 +257,46 @@ public final class StocksCommand implements CommandExecutor, TabCompleter {
             player.sendMessage(messages.format("limit-cancelled", Map.of("id", String.valueOf(id))));
         } else {
             player.sendMessage(messages.format("limit-not-found", Map.of("id", String.valueOf(id))));
+        }
+    }
+
+    private void showOrderBook(Player player, String[] args) throws SQLException {
+        if (args.length < 2) {
+            player.sendMessage("/stocks orderbook <symbol>");
+            return;
+        }
+        MarketState state = marketService.state(args[1]).orElse(null);
+        if (state == null) {
+            player.sendMessage(messages.format("asset-not-found", Map.of("symbol", args[1].toUpperCase(Locale.ROOT))));
+            return;
+        }
+        List<LimitOrder> orders = limitOrderService.openOrdersForSymbol(state.asset().symbol(), 12);
+        if (orders.isEmpty()) {
+            player.sendMessage("No open limit orders for " + state.asset().symbol() + ".");
+            return;
+        }
+        player.sendMessage("Open orders for " + state.asset().symbol() + ":");
+        for (LimitOrder order : orders) {
+            player.sendMessage("#" + order.id() + " " + order.side()
+                    + " " + Formats.quantity(order.quantity())
+                    + " @ " + Formats.money(order.targetPrice()));
+        }
+    }
+
+    private void showHistory(Player player, String[] args) throws SQLException {
+        if (args.length < 2) {
+            player.sendMessage("/stocks history <symbol>");
+            return;
+        }
+        MarketState state = marketService.state(args[1]).orElse(null);
+        if (state == null) {
+            player.sendMessage(messages.format("asset-not-found", Map.of("symbol", args[1].toUpperCase(Locale.ROOT))));
+            return;
+        }
+        List<dev.gabea.mcstocks.model.PricePoint> points = priceHistoryService.recent(state.asset().symbol(), 8);
+        player.sendMessage(state.asset().symbol() + " history: " + priceHistoryService.sparkline(state.asset().symbol(), 16));
+        for (dev.gabea.mcstocks.model.PricePoint point : points) {
+            player.sendMessage(Formats.money(point.price()));
         }
     }
 
