@@ -4,6 +4,7 @@ assets:
     type: STOCK
     initial-price: 125.00
     min-price: 5.00
+    max-price: 2500.00
     volatility: 0.025
     trend: 0.001
     decimal-trading: false
@@ -14,6 +15,7 @@ assets:
     type: STOCK
     initial-price: 82.50
     min-price: 3.00
+    max-price: 2000.00
     volatility: 0.035
     trend: 0.0015
     decimal-trading: false
@@ -24,6 +26,7 @@ assets:
     type: STOCK
     initial-price: 210.00
     min-price: 10.00
+    max-price: 4000.00
     volatility: 0.02
     trend: 0.0005
     decimal-trading: false
@@ -34,6 +37,7 @@ assets:
     type: STOCK
     initial-price: 64.00
     min-price: 2.00
+    max-price: 1500.00
     volatility: 0.045
     trend: -0.0005
     decimal-trading: false
@@ -44,6 +48,7 @@ assets:
     type: CRYPTO
     initial-price: 18.00
     min-price: 0.25
+    max-price: 900.00
     volatility: 0.08
     trend: 0.002
     decimal-trading: true
@@ -54,6 +59,7 @@ assets:
     type: CRYPTO
     initial-price: 42.00
     min-price: 0.50
+    max-price: 1200.00
     volatility: 0.065
     trend: 0.001
     decimal-trading: true
@@ -64,6 +70,7 @@ assets:
     type: CRYPTO
     initial-price: 7.50
     min-price: 0.10
+    max-price: 500.00
     volatility: 0.09
     trend: -0.001
     decimal-trading: true

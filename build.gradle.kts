@@ -4,14 +4,16 @@ plugins {
 }
 
 group = "dev.gabea.mcstocks"
-version = "1.0.2"
+version = "1.1.0"
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
     compileOnly("com.github.MilkBowl:VaultAPI:1.7") {
         exclude(group = "org.bukkit", module = "bukkit")
     }
+    compileOnly("me.clip:placeholderapi:2.11.6")
     implementation("org.xerial:sqlite-jdbc:3.46.1.0")
+    implementation("org.mariadb.jdbc:mariadb-java-client:3.4.1")
 
     testImplementation(platform("org.junit:junit-bom:5.10.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")

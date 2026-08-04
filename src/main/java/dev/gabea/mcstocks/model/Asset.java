@@ -8,6 +8,7 @@ public record Asset(
         AssetType type,
         double initialPrice,
         double minPrice,
+        double maxPrice,
         double volatility,
         double trend,
         boolean decimalTrading,

@@ -57,6 +57,10 @@ public final class StocksCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 0) {
+            if (!player.hasPermission("stocks.market") && !player.hasPermission("mcstocks.use")) {
+                player.sendMessage("Missing permission.");
+                return true;
+            }
             stockMenus.openMain(player);
             return true;
         }
@@ -74,7 +78,13 @@ public final class StocksCommand implements CommandExecutor, TabCompleter {
                 case "cancel" -> cancelOrder(player, args);
                 case "orderbook" -> showOrderBook(player, args);
                 case "history" -> showHistory(player, args);
-                default -> stockMenus.openMain(player);
+                default -> {
+                    if (!player.hasPermission("stocks.market") && !player.hasPermission("mcstocks.use")) {
+                        player.sendMessage("Missing permission.");
+                        return true;
+                    }
+                    stockMenus.openMain(player);
+                }
             }
         } catch (SQLException ex) {
             plugin.getLogger().warning("Database error during /stocks: " + ex.getMessage());
@@ -110,6 +120,11 @@ public final class StocksCommand implements CommandExecutor, TabCompleter {
     }
 
     private void trade(Player player, String[] args, boolean buy) throws SQLException {
+        String permission = buy ? "stocks.buy" : "stocks.sell";
+        if (!player.hasPermission(permission) && !player.hasPermission("mcstocks.use")) {
+            player.sendMessage("Missing permission.");
+            return;
+        }
         if (args.length < 3) {
             player.sendMessage("/stocks " + (buy ? "buy" : "sell") + " <symbol> <amount>");
             return;
@@ -207,6 +222,11 @@ public final class StocksCommand implements CommandExecutor, TabCompleter {
             side = OrderSide.valueOf(args[1].toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
             player.sendMessage("/stocks limit <buy|sell> <symbol> <amount> <targetPrice>");
+            return;
+        }
+        String permission = side == OrderSide.BUY ? "stocks.buy" : "stocks.sell";
+        if (!player.hasPermission(permission) && !player.hasPermission("mcstocks.use")) {
+            player.sendMessage("Missing permission.");
             return;
         }
 
@@ -330,7 +350,7 @@ public final class StocksCommand implements CommandExecutor, TabCompleter {
         double amount = switch (key == null ? "" : key) {
             case "trade-too-small" -> marketService.rules().minTradeValue();
             case "trade-too-large" -> marketService.rules().maxTradeValue();
-            case "insufficient-funds" -> estimatedGross + (estimatedGross * (marketService.feePercent() / 100.0));
+            case "insufficient-funds" -> estimatedGross + (estimatedGross * ((marketService.feePercent() + marketService.taxPercent()) / 100.0));
             default -> estimatedGross;
         };
         return messages.format(key == null ? "invalid-amount" : key, Map.of(

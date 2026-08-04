@@ -30,43 +30,53 @@ public final class PriceHistoryService {
     }
 
     public void record(Collection<MarketState> states) throws SQLException {
-        long now = Instant.now().toEpochMilli();
-        try (PreparedStatement statement = database.connection().prepareStatement(
-                "INSERT INTO price_history (symbol, price, recorded_at) VALUES (?, ?, ?)")) {
-            for (MarketState state : states) {
-                statement.setString(1, state.asset().symbol());
-                statement.setDouble(2, state.price());
-                statement.setLong(3, now);
-                statement.addBatch();
+        database.sync(() -> {
+            long now = Instant.now().toEpochMilli();
+            try (PreparedStatement statement = database.connection().prepareStatement(
+                    "INSERT INTO price_history (symbol, price, recorded_at) VALUES (?, ?, ?)")) {
+                for (MarketState state : states) {
+                    statement.setString(1, state.asset().symbol());
+                    statement.setDouble(2, state.price());
+                    statement.setLong(3, now);
+                    statement.addBatch();
+                }
+                statement.executeBatch();
             }
-            statement.executeBatch();
-        }
-        prune(states);
+            prune(states);
+            return null;
+        });
+    }
+
+    public void recordAsync(Collection<MarketState> states) {
+        List<MarketState> snapshot = List.copyOf(states);
+        database.runAsync(() -> record(snapshot));
     }
 
     public List<PricePoint> recent(String symbol, int limit) throws SQLException {
-        try (PreparedStatement statement = database.connection().prepareStatement("""
-                SELECT symbol, price, recorded_at
-                FROM price_history
-                WHERE symbol = ?
-                ORDER BY recorded_at DESC
-                LIMIT ?
-                """)) {
-            statement.setString(1, symbol.toUpperCase(Locale.ROOT));
-            statement.setInt(2, Math.max(1, limit));
-            try (ResultSet results = statement.executeQuery()) {
-                List<PricePoint> points = new ArrayList<>();
-                while (results.next()) {
-                    points.add(new PricePoint(
-                            results.getString("symbol"),
-                            results.getDouble("price"),
-                            results.getLong("recorded_at")
-                    ));
+        return database.sync(() -> {
+            try (PreparedStatement statement = database.connection().prepareStatement("""
+                    SELECT symbol, price, recorded_at
+                    FROM price_history
+                    WHERE symbol = ?
+                    ORDER BY recorded_at DESC
+                    LIMIT ?
+                    """)) {
+                statement.setString(1, symbol.toUpperCase(Locale.ROOT));
+                statement.setInt(2, Math.max(1, limit));
+                try (ResultSet results = statement.executeQuery()) {
+                    List<PricePoint> points = new ArrayList<>();
+                    while (results.next()) {
+                        points.add(new PricePoint(
+                                results.getString("symbol"),
+                                results.getDouble("price"),
+                                results.getLong("recorded_at")
+                        ));
+                    }
+                    points.sort(Comparator.comparingLong(PricePoint::recordedAt));
+                    return points;
                 }
-                points.sort(Comparator.comparingLong(PricePoint::recordedAt));
-                return points;
             }
-        }
+        });
     }
 
     public String sparkline(String symbol, int limit) throws SQLException {
@@ -93,10 +103,12 @@ public final class PriceHistoryService {
                 DELETE FROM price_history
                 WHERE symbol = ?
                 AND id NOT IN (
-                    SELECT id FROM price_history
-                    WHERE symbol = ?
-                    ORDER BY recorded_at DESC
-                    LIMIT ?
+                    SELECT id FROM (
+                        SELECT id FROM price_history
+                        WHERE symbol = ?
+                        ORDER BY recorded_at DESC
+                        LIMIT ?
+                    ) kept
                 )
                 """)) {
             for (MarketState state : states) {

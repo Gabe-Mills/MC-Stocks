@@ -60,6 +60,9 @@ public final class LimitOrderService {
         if (!asset.enabled()) {
             throw new IllegalArgumentException("asset-disabled");
         }
+        if (state.frozen()) {
+            throw new IllegalArgumentException("asset-frozen");
+        }
         if (Double.isNaN(quantity) || Double.isInfinite(quantity) || quantity <= 0.0 || Double.isNaN(targetPrice) || Double.isInfinite(targetPrice) || targetPrice <= 0.0) {
             throw new IllegalArgumentException("invalid-amount");
         }
@@ -87,72 +90,80 @@ public final class LimitOrderService {
             }
         }
 
-        try (PreparedStatement statement = database.connection().prepareStatement("""
-                INSERT INTO limit_orders (uuid, symbol, side, quantity, target_price, status, created_at)
-                VALUES (?, ?, ?, ?, ?, 'OPEN', ?)
-                """, Statement.RETURN_GENERATED_KEYS)) {
-            statement.setString(1, player.getUniqueId().toString());
-            statement.setString(2, symbol);
-            statement.setString(3, side.name());
-            statement.setDouble(4, quantity);
-            statement.setDouble(5, targetPrice);
-            statement.setLong(6, Instant.now().toEpochMilli());
-            statement.executeUpdate();
-            try (ResultSet keys = statement.getGeneratedKeys()) {
-                if (keys.next()) {
-                    return keys.getLong(1);
+        return database.sync(() -> {
+            try (PreparedStatement statement = database.connection().prepareStatement("""
+                    INSERT INTO limit_orders (uuid, symbol, side, quantity, target_price, status, created_at)
+                    VALUES (?, ?, ?, ?, ?, 'OPEN', ?)
+                    """, Statement.RETURN_GENERATED_KEYS)) {
+                statement.setString(1, player.getUniqueId().toString());
+                statement.setString(2, symbol);
+                statement.setString(3, side.name());
+                statement.setDouble(4, quantity);
+                statement.setDouble(5, targetPrice);
+                statement.setLong(6, Instant.now().toEpochMilli());
+                statement.executeUpdate();
+                try (ResultSet keys = statement.getGeneratedKeys()) {
+                    if (keys.next()) {
+                        return keys.getLong(1);
+                    }
                 }
             }
-        }
-        throw new SQLException("Could not create limit order.");
+            throw new SQLException("Could not create limit order.");
+        });
     }
 
     public boolean cancel(UUID playerId, long orderId) throws SQLException {
-        try (PreparedStatement statement = database.connection().prepareStatement(
-                "UPDATE limit_orders SET status = 'CANCELLED', executed_at = ? WHERE id = ? AND uuid = ? AND status = 'OPEN'")) {
-            statement.setLong(1, Instant.now().toEpochMilli());
-            statement.setLong(2, orderId);
-            statement.setString(3, playerId.toString());
-            return statement.executeUpdate() > 0;
-        }
+        return database.sync(() -> {
+            try (PreparedStatement statement = database.connection().prepareStatement(
+                    "UPDATE limit_orders SET status = 'CANCELLED', executed_at = ? WHERE id = ? AND uuid = ? AND status = 'OPEN'")) {
+                statement.setLong(1, Instant.now().toEpochMilli());
+                statement.setLong(2, orderId);
+                statement.setString(3, playerId.toString());
+                return statement.executeUpdate() > 0;
+            }
+        });
     }
 
     public List<LimitOrder> openOrders(UUID playerId) throws SQLException {
-        try (PreparedStatement statement = database.connection().prepareStatement("""
-                SELECT id, uuid, symbol, side, quantity, target_price, status, created_at, executed_at
-                FROM limit_orders
-                WHERE uuid = ? AND status = 'OPEN'
-                ORDER BY created_at DESC
-                """)) {
-            statement.setString(1, playerId.toString());
-            try (ResultSet results = statement.executeQuery()) {
-                List<LimitOrder> orders = new ArrayList<>();
-                while (results.next()) {
-                    orders.add(readOrder(results));
+        return database.sync(() -> {
+            try (PreparedStatement statement = database.connection().prepareStatement("""
+                    SELECT id, uuid, symbol, side, quantity, target_price, status, created_at, executed_at
+                    FROM limit_orders
+                    WHERE uuid = ? AND status = 'OPEN'
+                    ORDER BY created_at DESC
+                    """)) {
+                statement.setString(1, playerId.toString());
+                try (ResultSet results = statement.executeQuery()) {
+                    List<LimitOrder> orders = new ArrayList<>();
+                    while (results.next()) {
+                        orders.add(readOrder(results));
+                    }
+                    return orders;
                 }
-                return orders;
             }
-        }
+        });
     }
 
     public List<LimitOrder> openOrdersForSymbol(String rawSymbol, int limit) throws SQLException {
-        try (PreparedStatement statement = database.connection().prepareStatement("""
-                SELECT id, uuid, symbol, side, quantity, target_price, status, created_at, executed_at
-                FROM limit_orders
-                WHERE symbol = ? AND status = 'OPEN'
-                ORDER BY target_price ASC, created_at ASC
-                LIMIT ?
-                """)) {
-            statement.setString(1, normalize(rawSymbol));
-            statement.setInt(2, Math.max(1, limit));
-            try (ResultSet results = statement.executeQuery()) {
-                List<LimitOrder> orders = new ArrayList<>();
-                while (results.next()) {
-                    orders.add(readOrder(results));
+        return database.sync(() -> {
+            try (PreparedStatement statement = database.connection().prepareStatement("""
+                    SELECT id, uuid, symbol, side, quantity, target_price, status, created_at, executed_at
+                    FROM limit_orders
+                    WHERE symbol = ? AND status = 'OPEN'
+                    ORDER BY target_price ASC, created_at ASC
+                    LIMIT ?
+                    """)) {
+                statement.setString(1, normalize(rawSymbol));
+                statement.setInt(2, Math.max(1, limit));
+                try (ResultSet results = statement.executeQuery()) {
+                    List<LimitOrder> orders = new ArrayList<>();
+                    while (results.next()) {
+                        orders.add(readOrder(results));
+                    }
+                    return orders;
                 }
-                return orders;
             }
-        }
+        });
     }
 
     public void processOpenOrders() throws SQLException {
@@ -197,53 +208,59 @@ public final class LimitOrderService {
     }
 
     public double openSellQuantity(UUID playerId, String rawSymbol) throws SQLException {
-        try (PreparedStatement statement = database.connection().prepareStatement("""
-                SELECT COALESCE(SUM(quantity), 0)
-                FROM limit_orders
-                WHERE uuid = ? AND symbol = ? AND side = 'SELL' AND status IN ('OPEN', 'PROCESSING')
-                """)) {
-            statement.setString(1, playerId.toString());
-            statement.setString(2, normalize(rawSymbol));
-            try (ResultSet results = statement.executeQuery()) {
-                return results.next() ? results.getDouble(1) : 0.0;
+        return database.sync(() -> {
+            try (PreparedStatement statement = database.connection().prepareStatement("""
+                    SELECT COALESCE(SUM(quantity), 0)
+                    FROM limit_orders
+                    WHERE uuid = ? AND symbol = ? AND side = 'SELL' AND status IN ('OPEN', 'PROCESSING')
+                    """)) {
+                statement.setString(1, playerId.toString());
+                statement.setString(2, normalize(rawSymbol));
+                try (ResultSet results = statement.executeQuery()) {
+                    return results.next() ? results.getDouble(1) : 0.0;
+                }
             }
-        }
+        });
     }
 
     private int openOrderCount(UUID playerId) throws SQLException {
-        try (PreparedStatement statement = database.connection().prepareStatement(
-                "SELECT COUNT(*) FROM limit_orders WHERE uuid = ? AND status IN ('OPEN', 'PROCESSING')")) {
-            statement.setString(1, playerId.toString());
-            try (ResultSet results = statement.executeQuery()) {
-                return results.next() ? results.getInt(1) : 0;
+        return database.sync(() -> {
+            try (PreparedStatement statement = database.connection().prepareStatement(
+                    "SELECT COUNT(*) FROM limit_orders WHERE uuid = ? AND status IN ('OPEN', 'PROCESSING')")) {
+                statement.setString(1, playerId.toString());
+                try (ResultSet results = statement.executeQuery()) {
+                    return results.next() ? results.getInt(1) : 0;
+                }
             }
-        }
+        });
     }
 
     private List<LimitOrder> executableOrders() throws SQLException {
-        try (PreparedStatement statement = database.connection().prepareStatement("""
-                SELECT id, uuid, symbol, side, quantity, target_price, status, created_at, executed_at
-                FROM limit_orders
-                WHERE status = 'OPEN'
-                ORDER BY created_at ASC
-                """);
-             ResultSet results = statement.executeQuery()) {
-            List<LimitOrder> orders = new ArrayList<>();
-            while (results.next()) {
-                LimitOrder order = readOrder(results);
-                MarketState state = marketService.state(order.symbol()).orElse(null);
-                if (state == null || !state.asset().enabled()) {
-                    continue;
+        return database.sync(() -> {
+            try (PreparedStatement statement = database.connection().prepareStatement("""
+                    SELECT id, uuid, symbol, side, quantity, target_price, status, created_at, executed_at
+                    FROM limit_orders
+                    WHERE status = 'OPEN'
+                    ORDER BY created_at ASC
+                    """);
+                 ResultSet results = statement.executeQuery()) {
+                List<LimitOrder> orders = new ArrayList<>();
+                while (results.next()) {
+                    LimitOrder order = readOrder(results);
+                    MarketState state = marketService.state(order.symbol()).orElse(null);
+                    if (state == null || !state.asset().enabled() || state.frozen()) {
+                        continue;
+                    }
+                    boolean executable = order.side() == OrderSide.BUY
+                            ? state.price() <= order.targetPrice()
+                            : state.price() >= order.targetPrice();
+                    if (executable) {
+                        orders.add(order);
+                    }
                 }
-                boolean executable = order.side() == OrderSide.BUY
-                        ? state.price() <= order.targetPrice()
-                        : state.price() >= order.targetPrice();
-                if (executable) {
-                    orders.add(order);
-                }
+                return orders;
             }
-            return orders;
-        }
+        });
     }
 
     private void mark(long id, String status) throws SQLException {
@@ -251,43 +268,51 @@ public final class LimitOrderService {
     }
 
     private void mark(long id, String status, Long executedAt) throws SQLException {
-        try (PreparedStatement statement = database.connection().prepareStatement(
-                "UPDATE limit_orders SET status = ?, executed_at = ? WHERE id = ?")) {
-            statement.setString(1, status);
-            if (executedAt == null) {
-                statement.setNull(2, java.sql.Types.INTEGER);
-            } else {
-                statement.setLong(2, executedAt);
+        database.sync(() -> {
+            try (PreparedStatement statement = database.connection().prepareStatement(
+                    "UPDATE limit_orders SET status = ?, executed_at = ? WHERE id = ?")) {
+                statement.setString(1, status);
+                if (executedAt == null) {
+                    statement.setNull(2, java.sql.Types.INTEGER);
+                } else {
+                    statement.setLong(2, executedAt);
+                }
+                statement.setLong(3, id);
+                statement.executeUpdate();
             }
-            statement.setLong(3, id);
-            statement.executeUpdate();
-        }
+            return null;
+        });
     }
 
     private boolean claim(long id) throws SQLException {
-        try (PreparedStatement statement = database.connection().prepareStatement(
-                "UPDATE limit_orders SET status = 'PROCESSING', executed_at = ? WHERE id = ? AND status = 'OPEN'")) {
-            statement.setLong(1, Instant.now().toEpochMilli());
-            statement.setLong(2, id);
-            return statement.executeUpdate() > 0;
-        }
+        return database.sync(() -> {
+            try (PreparedStatement statement = database.connection().prepareStatement(
+                    "UPDATE limit_orders SET status = 'PROCESSING', executed_at = ? WHERE id = ? AND status = 'OPEN'")) {
+                statement.setLong(1, Instant.now().toEpochMilli());
+                statement.setLong(2, id);
+                return statement.executeUpdate() > 0;
+            }
+        });
     }
 
     private void recoverStaleProcessingOrders() throws SQLException {
-        try (PreparedStatement statement = database.connection().prepareStatement("""
-                UPDATE limit_orders
-                SET status = 'OPEN', executed_at = NULL
-                WHERE status = 'PROCESSING' AND executed_at < ?
-                """)) {
-            statement.setLong(1, Instant.now().toEpochMilli() - staleProcessingMillis);
-            statement.executeUpdate();
-        }
+        database.sync(() -> {
+            try (PreparedStatement statement = database.connection().prepareStatement("""
+                    UPDATE limit_orders
+                    SET status = 'OPEN', executed_at = NULL
+                    WHERE status = 'PROCESSING' AND executed_at < ?
+                    """)) {
+                statement.setLong(1, Instant.now().toEpochMilli() - staleProcessingMillis);
+                statement.executeUpdate();
+            }
+            return null;
+        });
     }
 
     private boolean terminalFailure(String messageKey) {
         return switch (messageKey) {
             case "insufficient-funds", "insufficient-holdings", "trade-too-small", "trade-too-large",
-                 "whole-units-only", "asset-disabled", "asset-not-found", "limit-reserved-holdings" -> true;
+                 "whole-units-only", "asset-disabled", "asset-frozen", "asset-not-found", "limit-reserved-holdings" -> true;
             default -> false;
         };
     }
@@ -309,7 +334,7 @@ public final class LimitOrderService {
     }
 
     private double fee(double gross) {
-        return gross * (marketService.feePercent() / 100.0);
+        return gross * ((marketService.feePercent() + marketService.taxPercent()) / 100.0);
     }
 
     private String normalize(String symbol) {

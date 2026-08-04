@@ -1,17 +1,58 @@
+# Only Vault is required. Pair Vault with EssentialsX Economy (or any Vault economy).
+# LuckPerms and PlaceholderAPI are optional softdepends.
+
+database:
+  # sqlite (default) or mysql
+  type: sqlite
+  sqlite:
+    file: mcstocks.db
+  mysql:
+    host: 127.0.0.1
+    port: 3306
+    database: mcstocks
+    username: mcstocks
+    password: change-me
+    use-ssl: false
+    pool-size: 4
+
 market:
   open-on-start: true
   day-minutes: 30
+  # Wall-clock interval. Independent of server TPS / Minecraft ticks.
   tick-seconds: 60
   transaction-fee-percent: 1.0
+  # Extra tax on top of the transaction fee (percent of gross).
+  tax-percent: 0.0
   max-price-change-percent-per-tick: 12.0
   min-trade-value: 1.0
   max-trade-value: 100000.0
   price-history-limit-per-asset: 500
+  hours:
+    enabled: false
+    timezone: America/New_York
+    open: "09:30"
+    close: "16:00"
+    days:
+      - MONDAY
+      - TUESDAY
+      - WEDNESDAY
+      - THURSDAY
+      - FRIDAY
+
+circuit-breaker:
+  enabled: true
+  # Freeze an asset for the rest of the market day if |change from open| exceeds this.
+  trip-percent: 25.0
 
 limit-orders:
   enabled: true
   max-open-per-player: 10
   stale-processing-seconds: 300
+
+backups:
+  enabled: true
+  interval-minutes: 60
+  keep: 12
 
 leaderboards:
   size: 10

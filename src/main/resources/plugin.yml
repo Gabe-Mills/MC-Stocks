@@ -7,34 +7,73 @@ depend:
   - Vault
 softdepend:
   - Essentials
+  - LuckPerms
+  - PlaceholderAPI
 commands:
   stocks:
     description: Open the stock market menu, trade assets, or manage limit orders.
     usage: /stocks
-    permission: mcstocks.use
+    permission: stocks.market
   stocksadmin:
     description: Admin controls for MC-Stocks.
     usage: /stocksadmin
-    permission: mcstocks.admin
+    permission: stocks.admin
 permissions:
-  mcstocks.use:
-    description: Allows player stock trading.
+  stocks.market:
+    description: Allows opening the market menu and viewing prices.
     default: true
-  mcstocks.admin:
-    description: Allows MC-Stocks admin commands.
+  stocks.buy:
+    description: Allows buying assets.
+    default: true
+  stocks.sell:
+    description: Allows selling assets.
+    default: true
+  stocks.admin:
+    description: Allows all MC-Stocks admin commands.
     default: op
-  mcstocks.admin.reload:
+    children:
+      stocks.admin.reload: true
+      stocks.admin.pause: true
+      stocks.admin.setprice: true
+      stocks.admin.event: true
+      stocks.admin.inspect: true
+      stocks.admin.freeze: true
+      stocks.admin.reset: true
+      stocks.admin.reverse: true
+  stocks.admin.reload:
     description: Allows reloading MC-Stocks configuration.
     default: op
-  mcstocks.admin.pause:
+  stocks.admin.pause:
     description: Allows pausing and resuming the market.
     default: op
-  mcstocks.admin.setprice:
+  stocks.admin.setprice:
     description: Allows setting asset prices.
     default: op
-  mcstocks.admin.event:
+  stocks.admin.event:
     description: Allows triggering market events.
     default: op
-  mcstocks.admin.inspect:
+  stocks.admin.inspect:
     description: Allows inspecting player portfolios.
     default: op
+  stocks.admin.freeze:
+    description: Allows freezing and unfreezing assets.
+    default: op
+  stocks.admin.reset:
+    description: Allows resetting asset prices.
+    default: op
+  stocks.admin.reverse:
+    description: Allows reversing trades from the audit log.
+    default: op
+  # Backward-compatible aliases
+  mcstocks.use:
+    description: Legacy alias for stocks.market.
+    default: true
+    children:
+      stocks.market: true
+      stocks.buy: true
+      stocks.sell: true
+  mcstocks.admin:
+    description: Legacy alias for stocks.admin.
+    default: op
+    children:
+      stocks.admin: true

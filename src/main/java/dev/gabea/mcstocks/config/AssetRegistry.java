@@ -55,12 +55,18 @@ public final class AssetRegistry {
                 type = AssetType.STOCK;
             }
 
+            double minPrice = Math.max(0.01, assetSection.getDouble("min-price", 0.01));
+            double maxPrice = assetSection.getDouble("max-price", 0.0);
+            if (maxPrice > 0.0 && maxPrice < minPrice) {
+                maxPrice = minPrice;
+            }
             Asset asset = new Asset(
                     symbol,
                     assetSection.getString("name", symbol),
                     type,
                     Math.max(0.01, assetSection.getDouble("initial-price", 10.0)),
-                    Math.max(0.01, assetSection.getDouble("min-price", 0.01)),
+                    minPrice,
+                    maxPrice,
                     Math.max(0.0, assetSection.getDouble("volatility", 0.02)),
                     assetSection.getDouble("trend", 0.0),
                     assetSection.getBoolean("decimal-trading", type == AssetType.CRYPTO),
